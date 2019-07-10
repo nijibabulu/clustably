@@ -23,7 +23,7 @@ Clustably can plot jackknife confidence values along with the standard UMAP or t
 library(clustably)
 library(Seurat)
 label <- function(obj) {
-  obj <- NormalizeData(obj, verbose=F) 
+  # function to label a resampled subset of the data
   obj <- FindVariableFeatures(obj, verbose = F) 
   obj <- ScaleData(obj, verbose = F) 
   obj <- RunPCA(obj, verbose = F) 
@@ -32,8 +32,10 @@ label <- function(obj) {
   Idents(obj)
 }
 
+pbmc <- # ... fetch and pre-process a pbmc Seurat data set
+
 pbmc.jack <- jackknifeClustering(pbmc, labelingFunc=label, n=100, verbose=T)
-pbmc.jack <- RunUMAP(pbmc.jack, reduction = "pca", dims = 1:10
+pbmc.jack <- RunUMAP(pbmc.jack, reduction = "pca", dims = 1:10)
 Idents(pbmc.jack) <- "jackknifeConsensus"
 DimConfidencePlot(pbmc.jack, confidence="jackknifeConfidence")
 ```
