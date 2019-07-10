@@ -56,6 +56,6 @@ CombinePlots(list(
   PlotCellClassifications(pbmc.jack.opt, plotTitle="Optimized")))
 ```
 
-![cellClassification](https://nijibabulu.github.io/clustably/defaultVsOptCells.png)
+![cellClassification](https://nijibabulu.github.io/clustably/defaultVsOptimizedCells.png)
 
 You can find a tutorial [here](https://nijibabulu.github.io/clustably/JackknifeResampling.html).
