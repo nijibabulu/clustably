@@ -1,0 +1,8 @@
+^.*\.Rproj$
+^\.Rproj\.user$
+^doc$
+^Meta$
+^data\/.*\.RData$
+^data\/filtered_gene_bc_matrices.*$
+^data/.*\.txt$
+^.*.gz$

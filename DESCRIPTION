@@ -1,0 +1,45 @@
+Package: clustably
+Type: Package
+Title: Explore the stability of clusters in single cell RNA-Seq data
+Version: 0.1.0
+Author: Bob Zimmermann
+Maintainer: Bob Zimmermann <robert.zimmermann@univie.ac.at>
+Description: More about what it does (maybe more than one line)
+    Use four spaces when indenting paragraphs within the Description.
+License: MIT + file LICENSE
+Encoding: UTF-8
+LazyData: true
+Imports: 
+    ComplexHeatmap,
+    MASS,
+    RColorBrewer,
+    SDMTools,
+    ape,
+    cowplot,
+    dplyr,
+    forcats,
+    furrr,
+    future,
+    ggplot2,
+    ggrepel,
+    ggridges,
+    grDevices,
+    graphics,
+    grid,
+    methods,
+    plotly,
+    png,
+    purrr,
+    rlang,
+    scales,
+    seriation,
+    stats,
+    stringr,
+    tibble,
+    tidyr,
+    utils
+Suggests: 
+    knitr,
+    rmarkdown
+VignetteBuilder: knitr
+RoxygenNote: 6.1.1

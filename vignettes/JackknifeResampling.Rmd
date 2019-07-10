@@ -1,0 +1,192 @@
+---
+title: "JackknifeResampling"
+output: rmarkdown::html_vignette
+vignette: >
+  %\VignetteIndexEntry{JackknifeResampling}
+  %\VignetteEngine{knitr::rmarkdown}
+  %\VignetteEncoding{UTF-8}
+---
+
+```{r, include = FALSE}
+knitr::opts_chunk$set(
+  collapse = TRUE,
+  comment = "#>",
+  warning=FALSE, 
+  message = FALSE,
+  fig.width = 7,
+  fig.align = "center"
+  )
+```
+
+```{r setup}
+library(clustably)
+library(Seurat)
+```
+
+This is a basic tutorial of how to compare different labelings of single cell data. We will be using the pbmc data taken from [here](https://s3-us-west-2.amazonaws.com/10x.files/samples/cell/pbmc3k/pbmc3k_filtered_gene_bc_matrices.tar.gz). A tutorial for the analyzing this in with v3.0 is [here](https://satijalab.org/seurat/v3.0/pbmc3k_tutorial.html). We start out by reading in the data.
+
+```{r load_pbmc}
+
+# Load the PBMC dataset
+pbmc.data <- Read10X(data.dir = "../data/filtered_gene_bc_matrices/hg19/")
+# Initialize the Seurat object with the raw (non-normalized data).
+pbmc <- CreateSeuratObject(counts = pbmc.data, project = "pbmc3k", min.cells = 3, min.features = 200)
+pbmc[["percent.mt"]] <- PercentageFeatureSet(pbmc, pattern = "^MT-")
+pbmc <- subset(pbmc, subset = nFeature_RNA > 200 & nFeature_RNA < 2500 & percent.mt < 5)
+pbmc
+```
+
+The way we will compare the data sets in general is to randomly downsample the set proportionally to the size of the data (in our case 25 %), and see how consistently our clustering strategy works across many downsamplings of the data. This is known as ["Jackknife Resampling"](https://en.wikipedia.org/wiki/Jackknife_resampling). 
+
+First, let's convince ourselves that downsampling the data does not change the clusters that we observe. Here we compare the clusters and UMAP embeddings of the entire PBMC dataset and 75 % of it.
+
+```{r default_clustering}
+set.seed(42)
+n <- length(Cells(pbmc))
+sample.size <- floor(.75*n)
+pbmc.subset = subset(pbmc, cells = sample(Cells(pbmc), sample.size))
+
+doClustering <- function(obj) {
+  obj <- NormalizeData(obj) 
+  obj <- FindVariableFeatures(obj)
+  obj <- ScaleData(obj)
+  obj <- RunPCA(obj, features = VariableFeatures(obj), verbose = F) 
+  obj <- RunUMAP(obj, reduction="pca", dims=1:10, verbose = F) 
+  obj <- FindNeighbors(obj, dims=1:10, verbose = F) 
+  obj <- FindClusters(obj, verbose=F)
+}
+
+pbmc <- doClustering(pbmc)
+pbmc.subset <- doClustering(pbmc.subset)
+```
+
+```{r compare_dims}
+CombinePlots(list(DimConfidencePlot(pbmc), DimConfidencePlot(pbmc.subset)))
+```
+
+This actually looks quite good. We can actually compare the clusters as well by comparing how often the same cells end up in the same cluster:
+
+```{r plot_naive_alignment, fig.width=4}
+library(ggplot2)
+tab <- table(Idents(pbmc)[Cells(pbmc.subset)],Idents(pbmc.subset), dnn=c("full","subset")) 
+df <- as.data.frame(scale(tab, center=F))
+ggplot(df, aes(full,subset,fill=Freq)) + 
+  geom_tile() + 
+  scale_fill_distiller(palette = "OrRd", direction=1)
+```
+
+The code above forms the basis of what we are doing with clustably. By using the `table()` function, we track which cells get which labelings, and regardless of the label name, clusters which have more cells in common are likely to be the same cluster. There are a few things we need to account for in the long run: 
+
+* The number of cells in common for the new clustering will only be a subset of both of the cells.
+* Sometimes the clusters will not have the same numbers as it happened so nicely above.
+* Sometimes there will be more clusters in the subset and we need to assign those to another "X" class.
+
+So here we make a method to align the cluster numbers to each other. Here we can look at such an alignment, scaled or by frequency:
+
+```{r alignment}
+pbmc.subset.aligned <- align2Idents.Seurat(pbmc.subset, pbmc)
+
+CombinePlots(list(
+    PlotCrossClassification(pbmc.subset.aligned, pbmc,  names=c("subset", "orig")),
+    PlotCrossClassification(pbmc.subset.aligned, pbmc,  names=c("subset", "orig"), scale = T)
+  )
+)
+  
+```
+
+This `table` method, in which we find the most common encoding of labeling (e.g. labeled `0` in the first and labeled `1` in the second) works well when we have few samples, but as we scale up, more and more cells will have no labeling because they were not sampled. There are a couple of approaches to fix this, such as filling in the most common cluster ID for each, but this does not work well when a missing cluster has effects on the IDs of other clusters in a labeling (i.e. `0` is not the equivalent cluster ID across groups). Therefore, we employ a greedy progressive alignemnt method `alignIdents()`. This is automatically done whever we perform a jackknife clustering.
+
+Here we will apply the clustering method that was used in the [Seurat Tutorial](https://satijalab.org/seurat/v3.0/pbmc3k_tutorial.html) to cluster our data:
+
+```{r jackknife}
+label <- function(obj) {
+  obj <- NormalizeData(obj, verbose=F) 
+  obj <- FindVariableFeatures(obj, verbose = F) 
+  obj <- ScaleData(obj, verbose = F) 
+  obj <- RunPCA(obj, verbose = F) 
+  obj <- FindNeighbors(obj, verbose = F)
+  obj <- FindClusters(obj, verbose = F) 
+  Idents(obj)
+}
+
+pbmc.jack <- jackknifeClustering(pbmc, labelingFunc=label, n=100, verbose=T)
+pbmc.jack <- RunUMAP(pbmc.jack, reduction = "pca", dims = 1:10)
+```
+
+100 replicates can take a long time. You can do it with fewer, or use the `ncores` parameter to spread the job across several cores if you have access to a multicore processor.
+
+We can now see a consensus labeling and how confident we are in this labeling:
+
+```{r, fig.width=7, fig.height=7}
+Idents(pbmc.jack) <- "jackknifeConsensus"
+DimConfidencePlot(pbmc.jack, confidence="jackknifeConfidence")
+```
+
+
+```{r crosslabeling, include=F}
+# This figure is too big.  We can also plot the frequency with which the labels are crossed. 
+DimCrossClassificationPlot(pbmc.jack)
+```
+
+We can also view this in a heatmap form which, depending on your preferences may be more telling.
+
+```{r}
+p1 <- PlotCrossClassificationFrequency(pbmc.jack)
+p2 <- PlotCellClassifications(pbmc.jack)
+CombinePlots(list(p1,p2))
+```
+
+We can also simply view the distribution of confidence levels for each of the clusters in boxplot or violin style:
+
+```{r}
+p1 <- PlotConfidenceDistributions(pbmc.jack)
+p2 <- PlotConfidenceDistributions(pbmc.jack, violin=T)
+CombinePlots(list(p1,p2))
+```
+
+Several clusters here are ambiguous. There are several reasons this could be happening:
+
+* Improper initial filtering, where some cells are difficult to classify, e.g. heat shock gene expression could be variable enough to qualify them for a "variable gene" but their expression spans several cell types.
+* Our classification method is not optimal. Perhaps we could use the [Leiden algorithm](https://www.nature.com/articles/s41598-019-41695-z) instead.
+* The clustering resolution is not optimal.
+
+...and many others. While we can automatically adjust parameters such as PCA dimensions with the suggested jackstraw and elbow plot methods in the [Seurat PBMC tutorial](https://satijalab.org/seurat/v3.0/pbmc3k_tutorial.html), unfortunately we have no automated methods for optimizing gene sets, algorithm choice or hyperparameters. We need to intuitively select a better setting. Domain knowledge or investigation might help us decide about which genes to pick. In our case, we can change the resolution as was suggested to do in the same tutorial:
+
+```{r}
+label.opt <- function(obj) {
+  obj <- NormalizeData(obj, verbose=F) 
+  obj <- FindVariableFeatures(obj, verbose = F) 
+  obj <- ScaleData(obj, verbose = F) 
+  obj <- RunPCA(obj, verbose = F) 
+  obj <- FindNeighbors(obj, verbose = F)
+  obj <- FindClusters(obj, resolution = 0.5, verbose = F) 
+  Idents(obj)
+}
+
+pbmc.jack.opt <- jackknifeClustering(pbmc, labelingFunc=label.opt, n=100, verbose=T)
+pbmc.jack.opt <- RunUMAP(pbmc.jack.opt, reduction = "pca", dims = 1:10)
+```
+
+We can use the previous analyses to compare them side-by-side.
+
+First, cross classification:
+
+```{r}
+CombinePlots(list(
+  PlotCrossClassificationFrequency(pbmc.jack, plotTitle="Default"),
+  PlotCrossClassificationFrequency(pbmc.jack.opt, plotTitle="Optimized")))
+```
+Cell classification:
+```{r}
+CombinePlots(list(
+  PlotCellClassifications(pbmc.jack, plotTitle="Default"),
+  PlotCellClassifications(pbmc.jack.opt, plotTitle="Optimized")))
+```
+
+Confidence distributions:
+
+```{r}
+CombinePlots(list(
+  PlotConfidenceDistributions(pbmc.jack, plotTitle="Default"),
+  PlotConfidenceDistributions(pbmc.jack.opt, plotTitle="Optimized")))
+```
