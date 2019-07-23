@@ -71,7 +71,9 @@ DimCrossClassificationPlot <- function(obj,
 #' @importFrom ComplexHeatmap Heatmap draw
 #' @importFrom RColorBrewer brewer.pal
 #' @importFrom grid grid.grabExpr
-DoClassificationHeatmap <- function(mat, scale, center, normalize, seriate, column_title, row_title, legend_title, show_row_names, ...) {
+#' @importFrom stringr str_glue
+#' @importFrom ggplotify as.ggplot
+DoClassificationHeatmap <- function(mat, scale, center, normalize, ordering_method, column_title, row_title, legend_title, show_row_names, ...) {
   if(scale && normalize) {
     stop("scale and normalize can not both be TRUE.")
   }
@@ -80,10 +82,16 @@ DoClassificationHeatmap <- function(mat, scale, center, normalize, seriate, colu
   } else if(normalize) {
     mat <- mat/rowSums(mat)
   }
-  if(seriate) {
+  if(ordering_method == "BEA_TSP") {
+    if(length(mat) > 1e6) {
+      warning(str_glue("Attempting to seriate a matrix with {length(mat)} cells. This could take a while. Consider using GW or NULL for the ordering method"))
+    }
     ord = seriate(max(mat)-mat, method="BEA_TSP", verbose=F)
     row_order = get_order(ord, 1)
     column_order = get_order(ord, 2)
+  } else if(ordering_method == "GW") {
+    row_order = seriate(dist(mat), method="GW") %>% get_order()
+    column_order = seriate(dist(t(mat)), method="GW") %>% get_order()
   } else {
     row_order = column_order = NULL
   }
@@ -97,7 +105,7 @@ DoClassificationHeatmap <- function(mat, scale, center, normalize, seriate, colu
           heatmap_legend_param = list(title=legend_title, at=breaks,
                                       direction="horizontal", title_position="lefttop"),
           ...)
-  grid.grabExpr(draw(hm, heatmap_legend_side="bottom"))
+  as.ggplot(grid.grabExpr(draw(hm, heatmap_legend_side="bottom")))
 }
 
 #' Plot cross-classification frequency in a heatmap
@@ -109,6 +117,9 @@ DoClassificationHeatmap <- function(mat, scale, center, normalize, seriate, colu
 #' @param scale scale the frequencies
 #' @param plotTitle title of the plot
 #' @param rowTitle title along the y axis of the plot
+#' @param orderingMethod the method to use for ordering the rows and columns of the heatmap.
+#'                       Note that the default, "BEA_TSP" can take a long time. "GW" is a hierarchical clustering method.
+#'                       NULL will use the default method for `Heatmap`
 #' @param ... parameters to pass to Heatmap
 #'
 #' @importFrom tidyr gather spread
@@ -118,8 +129,9 @@ DoClassificationHeatmap <- function(mat, scale, center, normalize, seriate, colu
 #'
 #' @export
 PlotCrossClassificationFrequency <- function(obj,  consensusName="jackknifeConsensus", frequencyName="jackknifeFrequency",
-                                             center=FALSE, scale=FALSE, normalize=TRUE,
+                                             center=FALSE, scale=FALSE, normalize=TRUE, orderingMethod=c("BEA_TSP", "GW", NULL),
                                              plotTitle="Cross Classification", rowTitle="Consensus", ...) {
+  orderingMethod <- match.arg(orderingMethod)
   consVar <- list(cons=consensusName)
   cons <- rownames_to_column(obj[[consensusName]], "cell") %>% rename(!!!consVar)
   freqs <- obj@misc[[frequencyName]] %>%  rownames_to_column("cluster") %>% as_tibble()
@@ -128,7 +140,7 @@ PlotCrossClassificationFrequency <- function(obj,  consensusName="jackknifeConse
     column_to_rownames("cons") %>% as.matrix()
 
   freqTitle <- str_replace(frequencyName, "([[:upper:]])", " \\1") %>% str_to_title()
-  DoClassificationHeatmap(consFreqsMat, scale, center, normalize, seriate=TRUE,
+  DoClassificationHeatmap(consFreqsMat, scale, center, normalize, ordering_method=orderingMethod,
                           column_title=plotTitle, row_title=rowTitle,
                           show_row_names=TRUE, legend_title = freqTitle, ...)
 
@@ -145,7 +157,10 @@ PlotCrossClassificationFrequency <- function(obj,  consensusName="jackknifeConse
 #' @param scale scale the frequencies
 #' @param plotTitle title of the plot
 #' @param rowTitle title along the y axis of the plot
-#' @param ... parameters to pass to Heatmap
+#' @param orderingMethod the method to use for ordering the rows and columns of the heatmap.
+#'                       Note that the default, "BEA_TSP" can take a long time. "GW" is a hierarchical clustering method.
+#'                       NULL will use the default method for `Heatmap`
+#' @param ... parameters to pass to `Heatmap``
 #'
 #' @importFrom tidyr gather spread
 #' @importFrom dplyr rename group_by summarize
@@ -153,15 +168,16 @@ PlotCrossClassificationFrequency <- function(obj,  consensusName="jackknifeConse
 #'
 #' @export
 PlotCellClassifications <- function(obj,  consensusName="jackknifeConsensus", frequencyName="jackknifeFrequency",
-                                             center=FALSE, scale=FALSE, normalize=TRUE,
+                                             center=FALSE, scale=FALSE, normalize=TRUE, orderingMethod=c("BEA_TSP", "GW", NULL),
                                              plotTitle="Cell Classifications", rowTitle="Cells", ...) {
 
+  orderingMethod <- match.arg(orderingMethod)
   freqs <- obj@misc[[frequencyName]] %>% rownames_to_column("cluster") %>% as_tibble()
   freqsT <- freqs %>%
     gather( key = 'cell', value = 'freq', 2:ncol(.) ) %>%
     spread( key = 1, value = freq ) %>% column_to_rownames("cell") %>% as.matrix()
   freqTitle <- str_replace(frequencyName, "([[:upper:]])", " \\1") %>% str_to_title()
-  DoClassificationHeatmap(freqsT, scale, center, normalize, seriate=TRUE,
+  DoClassificationHeatmap(freqsT, scale, center, normalize, ordering_method = orderingMethod,
                           column_title=plotTitle, row_title=rowTitle,
                           show_row_names=FALSE, legend_title = freqTitle, ...)
 }
