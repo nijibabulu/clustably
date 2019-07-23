@@ -83,8 +83,8 @@ DoClassificationHeatmap <- function(mat, scale, center, normalize, ordering_meth
     mat <- mat/rowSums(mat)
   }
   if(ordering_method == "BEA_TSP") {
-    if(length(mat) > 1e6) {
-      warning(str_glue("Attempting to seriate a matrix with {length(mat)} cells. This could take a while. Consider using GW or NULL for the ordering method"))
+    if(length(mat) > 1e2) {
+      message(str_glue("Attempting to seriate a matrix with {length(mat)} cells. This could take a while. Consider using 'GW' or 'default' for the ordering method"))
     }
     ord = seriate(max(mat)-mat, method="BEA_TSP", verbose=F)
     row_order = get_order(ord, 1)
@@ -119,7 +119,7 @@ DoClassificationHeatmap <- function(mat, scale, center, normalize, ordering_meth
 #' @param rowTitle title along the y axis of the plot
 #' @param orderingMethod the method to use for ordering the rows and columns of the heatmap.
 #'                       Note that the default, "BEA_TSP" can take a long time. "GW" is a hierarchical clustering method.
-#'                       NULL will use the default method for `Heatmap`
+#'                       "default" will use the default method for `Heatmap`
 #' @param ... parameters to pass to Heatmap
 #'
 #' @importFrom tidyr gather spread
@@ -129,7 +129,7 @@ DoClassificationHeatmap <- function(mat, scale, center, normalize, ordering_meth
 #'
 #' @export
 PlotCrossClassificationFrequency <- function(obj,  consensusName="jackknifeConsensus", frequencyName="jackknifeFrequency",
-                                             center=FALSE, scale=FALSE, normalize=TRUE, orderingMethod=c("BEA_TSP", "GW", NULL),
+                                             center=FALSE, scale=FALSE, normalize=TRUE, orderingMethod=c("BEA_TSP", "GW", "default"),
                                              plotTitle="Cross Classification", rowTitle="Consensus", ...) {
   orderingMethod <- match.arg(orderingMethod)
   consVar <- list(cons=consensusName)
@@ -159,7 +159,7 @@ PlotCrossClassificationFrequency <- function(obj,  consensusName="jackknifeConse
 #' @param rowTitle title along the y axis of the plot
 #' @param orderingMethod the method to use for ordering the rows and columns of the heatmap.
 #'                       Note that the default, "BEA_TSP" can take a long time. "GW" is a hierarchical clustering method.
-#'                       NULL will use the default method for `Heatmap`
+#'                       "default" will use the default method for `Heatmap`
 #' @param ... parameters to pass to `Heatmap``
 #'
 #' @importFrom tidyr gather spread
@@ -168,7 +168,7 @@ PlotCrossClassificationFrequency <- function(obj,  consensusName="jackknifeConse
 #'
 #' @export
 PlotCellClassifications <- function(obj,  consensusName="jackknifeConsensus", frequencyName="jackknifeFrequency",
-                                             center=FALSE, scale=FALSE, normalize=TRUE, orderingMethod=c("BEA_TSP", "GW", NULL),
+                                             center=FALSE, scale=FALSE, normalize=TRUE, orderingMethod=c("BEA_TSP", "GW", "default"),
                                              plotTitle="Cell Classifications", rowTitle="Cells", ...) {
 
   orderingMethod <- match.arg(orderingMethod)
